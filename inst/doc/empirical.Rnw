@@ -1,0 +1,188 @@
+%\VignetteIndexEntry{Empirical Probability Density Functions and Empirical Cumulative Distribution Functions}
+\documentclass {article}
+\usepackage[a4paper,top=2.6cm,bottom=3.6cm,left=3.6cm,right=3.6cm]{geometry}
+\usepackage{parskip,verbatim,amsmath,amssymb,color}
+\usepackage[nogin]{Sweave}
+\pagestyle{myheadings}
+\setlength{\parskip}{0.28cm}
+\DefineVerbatimEnvironment{Sinput}{Verbatim}{xleftmargin=0.75em, formatcom=\color{rin}}
+\DefineVerbatimEnvironment{Soutput}{Verbatim}{xleftmargin=0.75em,formatcom=\color{rout}}
+\DefineVerbatimEnvironment{Serror}{Verbatim}{xleftmargin=0.75em,formatcom=\color{rerr}}
+\newcommand {\stitle}[3]
+{	\title {\vspace {-0.6cm} {\normalsize \underline {#1 #2} } \\[0.8cm] {\textbf {\huge #3} } }
+	\author {\textbf {Abby Spurdle} }
+	\maketitle
+	\markright{Spurdle, A.\hfill #1 #2\hfill}
+	\thispagestyle {empty}
+}
+\newcommand {\sabstract}[1]
+{	\begin {center}
+	\begin {minipage}{14.25cm}
+		{\textsl {#1} }
+	\end {minipage}
+	\end {center}
+	\vspace {0.06cm}
+}
+\definecolor{rin}{rgb}{0, 0, 0.32}
+\definecolor{rout}{rgb}{0, 0.14, 0}
+\definecolor{rerr}{rgb}{0.5, 0.025, 0}
+\SweaveOpts{keep.source=TRUE}
+\SweaveOpts{eps=FALSE}
+\SweaveOpts{prefix.string=temp-empirical}
+\begin{document}
+
+<<echo=false>>=
+options(continue=" ")
+options(SweaveHooks=list(fig=function()
+par(mar=c(4.1, 4.1, 2.6, 1.6), cex=0.7, cex.main=1)))
+
+set.seed (2)
+@
+
+\stitle {empirical}{0.1.0}{Empirical Probability Density Functions and Empirical Cumulative Distribution Functions}
+
+\sabstract {Implements empirical probability density functions (continuous functions) and empirical cumulative distribution functions (step functions or continuous). Currently, univariate only.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+This package implements what I refer to as empirical probability distributions (empirical probability density functions and empirical cumulative distribution functions).
+
+Empirical probability density functions (EPDFs) are continuous functions, interpolated by a cubic hermite spline.
+
+Empirical cumulative distributions functions (ECDFs) are either step functions or continuous functions, interpolated by a cubic hermite spline.
+
+Note that continuous functions are smooth, in that they're continuous and have a continuous first derivative. However, they don't necessarily appear smooth.
+
+I'm planning to add multivariate and conditional probability distributions in the near future.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Loading The empirical Package}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+First we need to load the empirical package.
+<<>>=
+library (empirical)
+@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Empirical Probability Density Functions}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We can compute an EPDF by computing a continuous ECDF and then computing difference quotients from finite differences, subject to a smoothing parameter that determines the size of the intervals.
+
+I don't think that the current EPDFs integrate to one. And reasonable models require large data. So the current method requires some improvement.
+
+We can use the euvpdf() function. I recommend using the ebind function first to add two additional data points:
+
+<<>>=
+x = rnorm (2000, 4) ^ 2 
+@
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+ebx = ebind (x)
+f = euvpdf (ebx)
+f
+plot (f)
+@
+\end {center}
+
+The object returned is a function so we can evaluate it:
+<<>>=
+f (16)
+@
+
+It's possible to specify a smoothing parameter. A value of 0.25 indicates that an interval equal to 0.25*diff(range(x)). Higher values produce smoother models but are likely to over smooth. 
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+f = euvpdf (ebx, 0.25)
+plot (f)
+@
+\end {center}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Empirical Cumulative Distribution Functions}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We can compute a step function ECDF function using the following expression:
+
+\begin {equation*}
+\mathbb {P} (X \leq x)  = \mathrm F (x) = \frac {\sum_i \mathrm I (x_i^\ast \leq x)}{n}
+\end {equation*}
+
+Where $\mathrm I()$ is 1 if the enclosed expression is true and 0 if false, $n$ is the number of observations and $x^\ast$ is a vector of observations.
+
+We can used the euvcdf() function:
+
+<<>>=
+x = rnorm (30, 4) ^ 2
+@
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+F = euvcdf (x)
+F
+plot (F)
+@
+\end {center}
+
+The object returned is a function so we can evaluate it:
+<<>>=
+F (16)
+@
+
+We can compute a continuous ECDF by computing two vertices:
+
+\begin {equation*}
+\mathrm F_v (a) = \frac {\sum_i \mathrm I (x_i^\ast \leq a) - 1}{n - 1}, \mathrm F_v (b) = \frac {\sum_i \mathrm I (x_i^\ast \leq b) - 1}{n - 1}
+\end {equation*}
+
+Where $a$ and $b$ are the values of $x^\ast$ adjacent to $x$. Then interpolating between them.
+
+We can using the euvcdf() function with TRUE as the second argument. I recommend using the ebind() function first to add two additional data points.
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+ebx = ebind (x)
+F = euvcdf (ebx, TRUE)
+plot (F)
+@
+\end {center}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Inverse Empirical Cumulative Distribution Functions}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We can construct an inverse ECDF using the euvcdf.inverse() function:
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+F.inverse = euvcdf.inverse (x)
+plot (F.inverse)
+@
+\end {center}
+
+Or a continuous version:
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+F.inverse = euvcdf.inverse (ebx, TRUE)
+plot (F.inverse)
+@
+\end {center}
+
+Currently, this function uses linear interpolation rather than cubic hermite splines.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Multivariate Empirical Cumulative Distribution Functions}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We can compute a step function bivariate ECDF using the following expression:
+
+\begin {equation*}
+\mathbb {P} (X_1 \leq x_1, X_2 \leq x_2)  = \mathrm F (x_1, x_2) = \frac {\sum_i \mathrm I (x_{[i][1]}^\ast \leq x_1 \wedge x_{[i][2]}^\ast \leq x_2)}{n_r}
+\end {equation*}
+
+Where $n_r$ is the number of observations.
+
+This can be generalized for more variables.
+
+However, there are some issues with this expression. So I'm considering alternatives.
+
+\end{document}

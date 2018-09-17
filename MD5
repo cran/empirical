@@ -1,0 +1,14 @@
+38b7f5109114a7536bc2e6dcfc80ffde *DESCRIPTION
+97676bb60ffbc88f8c533d07bce56448 *NAMESPACE
+e29efd7f152a3d0789a76e0b732d1650 *R/returned.functions.r
+ff872571dff4700eb6cab6250f512b44 *R/univariate.r
+778b0363c4fefa9efa0b3d0c8c65e838 *build/vignette.rds
+53b99b71f214287499f61172524e7f23 *inst/doc/empirical.R
+bf24629ee2d2a18e1aab13f893063282 *inst/doc/empirical.Rnw
+48ed259632893d46f8dc177e9db5721e *inst/doc/empirical.pdf
+5773261b6f825fa0a9dd1ba0c137791e *man/ebind.Rd
+2158b8b8213f29451dd64273001c0d7f *man/empirical.Rd
+5b6ae087960e1301f40ffdc24bce11ea *man/methods.Rd
+1ae3ef478fbf5d0d62e14a8803f2ab7a *man/returned.functions.Rd
+a51966a83a91d88c2a67f26979ba5bd7 *vignettes/Makefile
+bf24629ee2d2a18e1aab13f893063282 *vignettes/empirical.Rnw
