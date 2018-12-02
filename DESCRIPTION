@@ -1,13 +1,16 @@
 Package: empirical
-Title: Empirical Probability Density Functions and Empirical Cumulative
-        Distribution Functions
-Version: 0.1.0
-Date: 2018-09-11
-Author: Abby Spurdle
-Maintainer: Abby Spurdle <spurdle.a@gmail.com>
-Description: Implements empirical probability density functions (continuous functions) and empirical cumulative distribution functions (step functions or continuous). Currently, univariate only.
+Title: Probability Distributions as Models of Data
+Version: 0.2.0
+Date: 2018-12-03
 License: GPL (>= 2)
+Maintainer: Abby Spurdle <spurdle.a@gmail.com>
+Author: Abby Spurdle
+URL: https://sites.google.com/site/asrpws
+Description: Computes continuous (not step) empirical (and nonparametric) probability density, cumulative distribution and quantile functions. Supports univariate, multivariate and conditional probability distributions, some kernel smoothing features and weighted data (possibly useful mixed with fuzzy clustering). Can compute multivariate and conditional probabilities. Also, can compute conditional medians, quantiles and modes.
+Depends: graphics, stats
+Imports: barsurf
+Suggests: intoo, bivariate, fclust, mgcv, gam, moments
 NeedsCompilation: no
-Packaged: 2018-09-11 01:13:54 UTC; Student9
+Packaged: 2018-12-02 22:59:53 UTC; Student9
 Repository: CRAN
-Date/Publication: 2018-09-17 13:20:06 UTC
+Date/Publication: 2018-12-02 23:30:04 UTC

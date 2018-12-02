@@ -1,4 +1,4 @@
-%\VignetteIndexEntry{Empirical Probability Density Functions and Empirical Cumulative Distribution Functions}
+%\VignetteIndexEntry{Probability Distributions as Models of Data}
 \documentclass {article}
 \usepackage[a4paper,top=2.6cm,bottom=3.6cm,left=3.6cm,right=3.6cm]{geometry}
 \usepackage{parskip,verbatim,amsmath,amssymb,color}
@@ -9,7 +9,7 @@
 \DefineVerbatimEnvironment{Soutput}{Verbatim}{xleftmargin=0.75em,formatcom=\color{rout}}
 \DefineVerbatimEnvironment{Serror}{Verbatim}{xleftmargin=0.75em,formatcom=\color{rerr}}
 \newcommand {\stitle}[3]
-{	\title {\vspace {-0.6cm} {\normalsize \underline {#1 #2} } \\[0.8cm] {\textbf {\huge #3} } }
+{	\title {\vspace {-0.6cm} {\normalsize #1 #2 } \\[0.8cm] {\textbf {\huge #3} } }
 	\author {\textbf {Abby Spurdle} }
 	\maketitle
 	\markright{Spurdle, A.\hfill #1 #2\hfill}
@@ -35,154 +35,623 @@
 options(continue=" ")
 options(SweaveHooks=list(fig=function()
 par(mar=c(4.1, 4.1, 2.6, 1.6), cex=0.7, cex.main=1)))
-
-set.seed (2)
 @
 
-\stitle {empirical}{0.1.0}{Empirical Probability Density Functions and Empirical Cumulative Distribution Functions}
+\stitle {empirical}{0.2.0}{Probability Distributions\\as\\Models of Data}
 
-\sabstract {Implements empirical probability density functions (continuous functions) and empirical cumulative distribution functions (step functions or continuous). Currently, univariate only.}
+\sabstract {Computes continuous (not step) empirical (and nonparametric) probability density, cumulative distribution and quantile functions. Supports univariate, multivariate and conditional probability distributions, some kernel smoothing features and weighted data (possibly useful mixed with fuzzy clustering). Can compute multivariate and conditional probabilities. Also, can compute conditional medians, quantiles and modes.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Pre-Intro}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+This package uses objects, which are also functions, which are also models, which are also probability distributions.
+
+Some functions (constructors) return other functions (models), which can be evaluated. The resulting functions have attributes (which along with their arguments) determine their return values.
+
+This is intermediate between a standard object oriented approach and a functional approach. And I believe that this is the best approach for implementing probability distributions, especially nonparametric probability distributions.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section* {Introduction}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-This package implements what I refer to as empirical probability distributions (empirical probability density functions and empirical cumulative distribution functions).
+This package computes what I refer to as empirical models (or empirical probability distributions).
 
-Empirical probability density functions (EPDFs) are continuous functions, interpolated by a cubic hermite spline.
+Currently, this includes:
+\begin {itemize}
+	\item Continuous empirical probability density functions (EPDFs).
+	\item Continuous empirical cumulative distribution functions (ECDFs).
+	\item Continuous empirical quantile functions (EQFs).
+\end {itemize}
 
-Empirical cumulative distributions functions (ECDFs) are either step functions or continuous functions, interpolated by a cubic hermite spline.
+It supports univariate, multivariate and conditional probability distributions.
 
-Note that continuous functions are smooth, in that they're continuous and have a continuous first derivative. However, they don't necessarily appear smooth.
+Currently, univariate models are computed differently to multivariate models:
+\begin {itemize}
+	\item Univariate models use what I refer to as a quantile approach and compute a series of vertices (similar to a standard ECDF) and then use a cubic hermite spline to interpolate between them. By default, univariate models smooth the data, using a lowess style smoother, which I refer to as derandomization.
+	\item Multivariate (and conditional) models use kernel smoothing, which I refer to as restacking.
+\end {itemize}
 
-I'm planning to add multivariate and conditional probability distributions in the near future.
+EPDFs can be used to compute modes and visualize the shape of probability distributions. ECDFs can be used to compute probabilities and to a lesser extent, visualize the shape too. And EQFs can be used to compute medians and quantiles.
+
+Also, we can compute conditional probabilities, medians, quantiles and modes from conditional probability distributions, which is similar to regression.
+
+Models may be weighted (possibly useful mixed with fuzzy clustering).
+
+The philosophy behind empirical models, is to model data directly, with as few assumptions as possible but with some support for robustness.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section* {Loading The empirical Package}
+\section* {Important Notes}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-First we need to load the empirical package.
+Currently, this package is experimental.
+
+I'm planning to support categorical variables and random number generation in the future.
+
+There are some problems with univariate models, especially univariate EPDFs. Their first derivative is not continuous which is particularly noticeable in the outer tails. This can interfere with mode computation, especially if trying to compute all modal points.
+
+I tried to create a hybrid Kernel-Quantile approach, however, I wasn't able to get it to work as yet. I will try again later.
+
+The function used to compute modes has had limited testing and there may be additional problems.
+
+The current implementation is slow and needs to be optimized, however, this is not a current development priority.
+
+Univariate models bind two additional data points by default. Univariate models need unique data points, if they're not unique then they're randomized first.
+
+Weighted models have had limited testing too.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Loading the Packages}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+I'm going to load (and attach) the intoo, empirical, fclust and moments packages:
 <<>>=
+library (intoo)
 library (empirical)
+library (fclust)
+library (moments)
 @
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section* {Empirical Probability Density Functions}
+\section* {Preparing the Data}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-We can compute an EPDF by computing a continuous ECDF and then computing difference quotients from finite differences, subject to a smoothing parameter that determines the size of the intervals.
+I'm going to use the trees data (from the datasets package) and the unemployment data (from the fclust package):
+<<>>=
+data (trees)
+data (unemployment)
+@
 
-I don't think that the current EPDFs integrate to one. And reasonable models require large data. So the current method requires some improvement.
-
-We can use the euvpdf() function. I recommend using the ebind function first to add two additional data points:
+And I'm going to convert to metric:
+<<>>=
+# -> m
+Height = 0.3048 * trees$Height
+# -> cm
+Girth = 2.54 * trees$Girth
+# -> m ^ 3
+Volume = 0.0283168 * trees$Volume
+@
 
 <<>>=
-x = rnorm (2000, 4) ^ 2 
+#total unemployment rate
+un.rate = unemployment$Total.Rate
+#long term unemployment rate
+lt.rate = unemployment$LongTerm.Share
+@
+
+New matrix objects:
+<<>>=
+trees2 = cbind (Height, Girth, Volume)
+unemployment2 = cbind (un.rate, lt.rate)
+@
+
+I've provided some more information on the trees2 and unemployment2 data in Appendices.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Univariate Models\\(and Core Functionality)}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Empirical probability density functions are produced by differentiating empirical cumulative distribution functions. We can use the epdfuv() function:
+<<>>=
+f = epdfuv (Height)
+@
+
+We can print the object directly, however, I recommend using the object.info() function from the intoo package, which at the time of writing, needs some improvement:
+<<>>=
+object.info (f)
+@
+
+We can access a single attribute using the attribute operator, also from the intoo package, if required:
+<<>>=
+f %$% x
+@
+
+We can plot the densities from both density (from the stats package) and epdfuv objects, and then compare them:
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+plot (density (Height), ylim=c (0, 0.27) )
+lines (f, col="darkgreen")
+@
+\end {center}
+
+Or using a different smoothing parameter:
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+f.75 = epdfuv (Height, drp=0.75)
+plot (f.75)
+@
+\end {center}
+
+Reiterating, univariate EPDFs do not have continuous first derivatives which is particularly noticeable in the outer tails. Another problem is that density estimates in the outer tails appear too high which implies that the density estimates in other regions are too low.
+
+We can evaluate the object (which is a function), however, this isn't that useful:
+<<>>=
+mean.Height = mean (Height)
+f (mean.Height)
+@
+
+Also, we can compute the empirical mode, using the emode() function:
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+mh = emode (f)
+plot (f)
+abline (v=mh, lty=2)
+mh
+@
+\end {center}
+
+We can compute vertices for a continuous (not step) empirical cumulative distribution function, using the following expression:
+
+\begin {equation*}
+\mathbb {P} (X \leq x)  = F (x) = \frac {\sum_i I (x_i^\ast \leq x) - 1}{n - 1}
+\end {equation*}
+
+Where $I()$ is 1 if the enclosed expression is true and is 0 if false, $n$ is the number of data points and $x^\ast$ is a vector of data points.
+
+We can use the ecdfuv() function:
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+F.unsmooth = ecdfuv (Height, FALSE)
+F = F.smooth = ecdfuv (Height)
+plot (F.unsmooth)
+lines (F.smooth, col="darkgreen")
+@
+\end {center}
+
+Like epdfuv objects we can evaluate an ecdfuv object.
+
+Let's say that we want to compute the probability that Height is between 20 and 22 meters:
+
+<<>>=
+F (22) - F (20)
+@
+
+We can compute an empirical quantile function by inverting the ECDF:
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+F.inv.unsmooth = ecdfuv.inverse (Height, FALSE)
+F.inv = F.inv.smooth = ecdfuv.inverse (Height)
+plot (F.inv.unsmooth)
+lines (F.inv.smooth, col="darkgreen")
+@
+\end {center}
+
+Like epdfuv and ecdfuv objects we can evaluate an ecdfuv.inverse object.
+
+Let's say we want to compute the median:
+<<>>=
+median = F.inv (0.5)
+median
+@
+
+Note that EQFs are not the exact inverse of ECDFs, because of the way that I've implemented them.
+<<>>=
+F (median)
+@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Bivariate Models}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We can compute bivariate models using the following expressions:
+
+\begin {equation*}
+f (x_1, x_2) = \frac {\sum_{i \in 2:(n-1)} [g (x_{[i, 1]}^\ast, \text {bw}_1, x_1) * g (x_{[i, 2]}^\ast, \text {bw}_2, x_2) ]}{n - 2}
+\end {equation*}
+
+Where:
+\begin {equation*}
+g (x_0, \text {bw}, x) = \frac {2}{\text {bw} } l (\frac {2}{\text {bw} }(x - x_0) )
+\end {equation*}
+
+And where $l()$ is the restacking PDF (kernel) and bw is the bandwidth.
+
+\begin {equation*}
+F (x_1, x_2) = \frac {\sum_{i \in 2:(n-1)} [G (x_{[i, 1]}^\ast, \text {bw}_1, x_1) * G (x_{[i, 2]}^\ast, \text {bw}_2, x_2) ]}{n - 2}
+\end {equation*}
+
+Where:
+\begin {equation*}
+G (x_0, \text {bw}, x) = L (\frac {2}{\text {bw} }(x - x_0) )
+\end {equation*}
+
+And where $L()$ is the restacking CDF.
+
+I've excluded the first and last data points, so that the ECDF of the first and last data points evaluates to 0 and 1, respectively, for consistency with univariate models.
+
+We can construct bivariate EPDFs and ECDFs using the epdfmv() and ecdfmv() functions:
+<<>>=
+f = epdfmv (cbind (Height, Volume) )
+F = ecdfmv (cbind (Height, Volume) )
 @
 
 \begin {center}
 <<fig=TRUE, width=4.75, height=3>>=
-ebx = ebind (x)
-f = euvpdf (ebx)
-f
 plot (f)
 @
-\end {center}
 
-The object returned is a function so we can evaluate it:
-<<>>=
-f (16)
+<<fig=TRUE, width=4.75, height=3>>=
+plot (f, TRUE)
 @
 
-It's possible to specify a smoothing parameter. A value of 0.25 indicates that an interval equal to 0.25*diff(range(x)). Higher values produce smoother models but are likely to over smooth. 
+<<fig=TRUE, width=4.75, height=3>>=
+plot (F)
+@
+
+<<fig=TRUE, width=4.75, height=3>>=
+plot (F, TRUE)
+@
+\end {center}
+
+Or alternatively:
+<<>>=
+#plot (f, all=TRUE)
+@
+
+Bivariate models aren't really useful in themselves except for visualizing the shape of probability distributions. However, we can use bivariate (and multivariate models generally) to compute conditional probability distributions and compute multivariate probabilities, which are discussed later.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Multivariate Models}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Bivariate models generalize to multivariate models (with m > 2) easily, however, they're difficult to visualize:
+
+\begin {equation*}
+f (x_1, x_2, ..., x_m) = \frac {\sum_{i \in 2:(n-1)} [g (x_{[i, 1]}^\ast, \text {bw}_1, x_1) * g (x_{[i, 2]}^\ast, \text {bw}_2, x_2) ) * ... * g (x_{[i, m]}^\ast, \text {bw}_m, x_m) ]}{n - 2}
+\end {equation*}
+
+\begin {equation*}
+F (x_1, x_2, ..., x_m) = \frac {\sum_{i \in 2:(n-1)} [G (x_{[i, 1]}^\ast, \text {bw}_1, x_1) * G (x_{[i, 2]}^\ast, \text {bw}_2, x_2) ) * ... * G (x_{[i, m]}^\ast, \text {bw}_m, x_m) ]}{n - 2}
+\end {equation*}
+
+Where m is the number of variables.
+
+<<>>=
+f = epdfmv (trees2)
+F = ecdfmv (trees2)
+@
+
+Currently, you can't plot multivariate models (with m > 2).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Conditional Models}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We can derive conditional models from multivariate models.
+
+In theory, we can compute a (univariate) conditional ECDF (on one variable) using:
+
+\begin {equation*}
+\mathbb {P} (X_2 \leq x_2 \mid X_1 = x_1)  = F (x_2) = \int_{-\infty}^{x_2} \frac {f_{X1,X2} (x_1, u)}{f_{X1} (x_1)} du
+\end {equation*}
+
+In theory, we can compute a (univariate) conditional ECDF (on two variables) using:
+
+\begin {equation*}
+\mathbb {P} (X_3 \leq x_3 \mid X_1 = x_1, X_2 = x_2) = F (x_3) = \int_{-\infty}^{x_3} \frac {f_{X1,X2,X3} (x_1, x_2, u)}{f_{X1,X2} (x_1, x_2)} du
+\end {equation*}
+
+And this can be generalized to m variables.
+
+We can construct conditional empirical models using the epdfc(), ecdfc() and ecdfc.inverse() functions:
+<<>>=
+mean.Girth = mean (Girth)
+cf = epdfc (Volume, c (Height=mean.Height, Girth=mean.Girth), trees2)
+cF = ecdfc (Volume, c (Height=mean.Height, Girth=mean.Girth), trees2)
+cF.inv = ecdfc (Volume, c (Height=mean.Height, Girth=mean.Girth), trees2)
+@
+
+Or alternatively (quoted):
+<<eval=FALSE>>=
+cf = epdfc ("Volume", c (Height=mean.Height, Girth=mean.Girth), trees2,
+    is.string=TRUE)
+@
 
 \begin {center}
 <<fig=TRUE, width=4.75, height=3>>=
-f = euvpdf (ebx, 0.25)
+plot (cf)
+@
+\end {center}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Computing Multivariate Probabilities}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We can compute the probability that two random variables are between two pairs of values as:
+
+\begin {equation*}
+\mathbb {P} (a_1 \leq X_1 \leq b_1, a_2 \leq X_2 \leq b_2)  = F (b_1, b_2) - [F (a_1, b_2) + F (b_1, a_2)] + F (a_1, a_2)
+\end {equation*}
+
+Where a is the lower limits and b is the upper limits.
+
+And for three variables:
+
+\begin {align*}
+\mathbb {P} (a_1 \leq X_1 \leq b_1, a_2 \leq X_2 \leq b_2, a_3 \leq X_3 \leq b_3)
+&= F (b_1, b_2, b_3)\\
+&- [F (a_1, b_2, b_3) + F (b_1, a_2, b_3) + F (b_1, b_2, a_3)]\\
+&+ [F (a_1, a_2, b_3) + F (a_1, b_2, a_3) + F (b_1, a_2, a_3)]\\
+&- F (a_1, a_2, a_3)
+\end{align*}
+
+This can be generalized to four or more variables.
+
+Note that we are computing the probability over a rectangular region. This approach won't work for nonrectangular regions.
+
+We can use the comb.prob() function, which takes three arguments:
+<<>>=
+a = c (20, 20, 0.2)
+b = c (30, 24, 0.8)
+#(using multivariate model from earlier section)
+comb.prob (F, a, b)
+@
+
+Note that it's possible to compute multiple regions at once by making a and b matrices with each row representing one region.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Conditional Probabilities and Conditional Statistics}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+It's possible to compute conditional probabilities, medians, quantiles or modes from conditional models. I'm planning to support conditional means and variances in the near future.
+
+We can compute the conditional probability in the same way as the univariate case:
+<<>>=
+#(using conditional model from earlier section)
+#probability that volume is between
+#0.2 and 0.8 cubic meters given mean height
+cF (0.8) - cF (0.2)
+@
+
+We can compute the median or quantile from the quantile function in the same way as the univariate case:
+<<>>=
+#(using conditional model from earlier section)
+#median
+cF.inv (0.5)
+#lower quartile
+cF.inv (0.25)
+@
+
+Likewise, we can compute the mode using the emode() function in the same way as the univariate case.
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+#(again, using conditional model from earlier section)
+mh = emode (cf)
+plot (cf)
+abline (v=mh, lty=2)
+mh
+@
+\end {center}
+
+Conditional probabilities and conditional statistics are similar to regression. It's possible to compute conditional probabilities and conditional statistics as functions of one or more variables, which is even more similar to regression. Currently, there's no functions in this package for this purpose. However, it's easy to write a module to do this.
+
+Let's say we want to compute the conditional median and conditional first and third quartiles of Volume, as functions of Height:
+<<>>=
+x = seq (min (Height), max (Height), length.out=30)
+y = matrix (0, nrow=30, ncol=3)
+for (i in 1:30)
+    y [i,] = ecdfc.inverse (Volume, c (Height=x [i]), cbind (Height, Volume),
+        npoints=10)(c (0.5, 0.25, 0.75) )
+@
+
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+plot (Height, Volume)
+lines (x, y [,1])
+lines (x, y [,2], lty=2)
+lines (x, y [,3], lty=2)
+@
+\end {center}
+
+In theory, we should be able to compute the conditional mode in the same way, however, I tried and there are some problems.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Fuzzy Clustering and Weighted Data}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Fuzzy clustering computes a membership matrix, with each row corresponding to each data point and each column corresponding to each cluster (not variable). Each row represents the membership of that data point in each cluster as numbers in the interval (0, 1).
+
+The following computes memberships for three clusters and then the weights for the first cluster:
+<<>>=
+w = FKM.gk (unemployment2, k=3, seed=2)$U [,1]
+w = w / sum (w)
+@
+
+Noting that the original dataset contains three variables, however, I'm only using two variables. Also noting that a weighted scatterplot is given in Appendix 6 (at the end of this vignette).
+
+However, fuzzy clustering is limited by itself. I use the term ``Membership-Weighted Data Analysis'' to refer to the process of modelling the data, weighted according to a membership matrix. I'm going to focus on nonparametric probability distributions, however, there are many ways of modelling such data.
+
+We can compute a weighted bivariate model easily:
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+f = epdfmv (unemployment2, w=w)
 plot (f)
 @
+
+<<fig=TRUE, width=4.75, height=3>>=
+plot (f, TRUE)
+@
 \end {center}
 
+Likewise, we can compute a weighted conditional model easily:
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+mean.un.rate = mean (un.rate)
+cf = epdfc (lt.rate, c (un.rate=mean.un.rate), unemployment2, w=w)
+plot (cf)
+@
+\end {center}
+
+This probability density function is relatively symmetrical, however, this isn't always the case.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section* {Empirical Cumulative Distribution Functions}
+\section* {todo}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-We can compute a step function ECDF function using the following expression:
+I'm planning todo:
+\begin {itemize}
+	\item Support categorical variables.\\(So, probability mass functions).
+	\item Improve univariate models, especially EPDFs.
+	\item Improve multivariate restacking formulation.\\(Preferably, implement a hybrid Kernel-Quantile approach, with greater robustness to outliers).
+	\item Support conditional means and variances.
+	\item Investigate conditional modes as functions of other variables.
+	\item Support random number generation.
+	\item Performance optimization.\\(Possibly using C).
+	\item Try to determine optimal smoothing parameters.
+\end {itemize}
 
-\begin {equation*}
-\mathbb {P} (X \leq x)  = \mathrm F (x) = \frac {\sum_i \mathrm I (x_i^\ast \leq x)}{n}
-\end {equation*}
+I may do:
+\begin {itemize}
+	\item Make some low level functions public.
+	\item Support derivatives of quantile functions.
+	\item Implement some form of multivariate quantile functions, if possible.
+	\item Improve mode computation, including the case for perfectly uniform regions.
+	\item Support conditional statistics as functions.\\(And support some equivalent of partial residual plots).	
+	\item Implement a preserve = ``median'' (and IQR) feature.
+	\item Implement plot option to shade regions under EPDFs.
+	\item Implement some form of statistical inference.
+	\item In multivariate models, sort the x attribute.\\(Mainly for consistency with univariate models).
+\end {itemize}
 
-Where $\mathrm I()$ is 1 if the enclosed expression is true and 0 if false, $n$ is the number of observations and $x^\ast$ is a vector of observations.
-
-We can used the euvcdf() function:
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Appendix 1:\\Simplified Bell Curves}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+<<>>=
+sbcpdf
+sbccdf
+@
 
 <<>>=
-x = rnorm (30, 4) ^ 2
+x = seq (-1, 1, length.out=200)
 @
 
 \begin {center}
 <<fig=TRUE, width=4.75, height=3>>=
-F = euvcdf (x)
-F
-plot (F)
+y = sbcpdf (x)
+plot (x, y, type="l")
+abline (v=c (-0.5, 0.5), h=c (0.5), lty=2)
 @
 \end {center}
 
-The object returned is a function so we can evaluate it:
+\begin {center}
+<<fig=TRUE, width=4.75, height=3>>=
+y = sbccdf (x)
+plot (x, y, type="l")
+@
+\end {center}
+
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Appendix 2:\\Additional Derandomization Details}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+The derandomize=TRUE option respaces the data by differencing the data, then transforming the differences, then computing a lowess style smoother on the transformed scale (using simplified bell curves) and then reversing the transformations.
+
+There's n-1 intervals. So, if n is 30 then the number of intervals will be 29. Note that if bind=TRUE then the n value will higher than the original number of data points.
+
+The smoothness (derandomization) parameter is multiplied by the number of intervals to give the nhood (neighborhood size parameter), so:
+
+\begin {equation*}
+\text{nhood} = \text{drp} * (n - 1)
+\end {equation*}
+
+The nhood parameter gives the number of intervals in the smoothing window, assuming that the smoothing window does not fall outside the range of observed data. If it does, then the region outside the range is truncated.
+
+If the nhood parameter is provided then the drp parameter is ignored.
+
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Appendix 3:\\Additional Restacking Details}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+The restacking pdf should be zero centred and symmetrical, with positive densities over the interval (-1, 1). And the restacking cdf should differentiate to a pdf with these properties.
+
+For each variable, the diff.range is equal to the max value less the min value. So, if the min value 5 and the max value is 15, then the diff.range will be 10.
+
+The smoothness (restacking) parameter is multiplied by the diff.range for each variable, to give a (vector) bandwidth parameter, so:
+\begin {equation*}
+\text {bw}_j = \text {rsp} * [\text {max} (x_{[,j]}^\ast) - \text {min} (x_{[,j]}^\ast)]
+\end {equation*}
+
+Like the nhood parameter, the bw parameter defines the width of the smoothing window.
+
+If the bw parameter is provided then the rsp parameter is ignored.
+
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Appendix 4:\\trees2 Data}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 <<>>=
-F (16)
+object.info (Height)
+object.info (Girth)
+object.info (Volume)
+summary (trees2)
+skewness (trees2)
 @
-
-We can compute a continuous ECDF by computing two vertices:
-
-\begin {equation*}
-\mathrm F_v (a) = \frac {\sum_i \mathrm I (x_i^\ast \leq a) - 1}{n - 1}, \mathrm F_v (b) = \frac {\sum_i \mathrm I (x_i^\ast \leq b) - 1}{n - 1}
-\end {equation*}
-
-Where $a$ and $b$ are the values of $x^\ast$ adjacent to $x$. Then interpolating between them.
-
-We can using the euvcdf() function with TRUE as the second argument. I recommend using the ebind() function first to add two additional data points.
 
 \begin {center}
 <<fig=TRUE, width=4.75, height=3>>=
-ebx = ebind (x)
-F = euvcdf (ebx, TRUE)
-plot (F)
+stripchart (Height, "jitter", pch=1)
+@
+
+<<fig=TRUE, width=4.75, height=3>>=
+stripchart (Girth, "jitter", pch=1)
+@
+
+<<fig=TRUE, width=4.75, height=3>>=
+stripchart (Volume, "jitter", pch=1)
+@
+
+<<fig=TRUE, width=4.75, height=3>>=
+plot (Height, Girth)
+@
+
+<<fig=TRUE, width=4.75, height=3>>=
+plot (Height, Volume)
+@
+
+<<fig=TRUE, width=4.75, height=3>>=
+plot (Girth, Volume)
 @
 \end {center}
 
+\newpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section* {Inverse Empirical Cumulative Distribution Functions}
+\section* {Appendix 5:\\unemployment2 Data}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-We can construct an inverse ECDF using the euvcdf.inverse() function:
+<<>>=
+object.info (un.rate)
+object.info (lt.rate)
+summary (unemployment2)
+skewness (unemployment2)
+@
 
 \begin {center}
 <<fig=TRUE, width=4.75, height=3>>=
-F.inverse = euvcdf.inverse (x)
-plot (F.inverse)
+plot (unemployment2)
 @
 \end {center}
 
-Or a continuous version:
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section* {Appendix 6:\\Weighted Scatter Plot}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin {center}
 <<fig=TRUE, width=4.75, height=3>>=
-F.inverse = euvcdf.inverse (ebx, TRUE)
-plot (F.inverse)
+s = 1 - w / max (w)
+plot (unemployment2, pch=16, col=rgb (s, s, s) )
 @
 \end {center}
-
-Currently, this function uses linear interpolation rather than cubic hermite splines.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section* {Multivariate Empirical Cumulative Distribution Functions}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-We can compute a step function bivariate ECDF using the following expression:
-
-\begin {equation*}
-\mathbb {P} (X_1 \leq x_1, X_2 \leq x_2)  = \mathrm F (x_1, x_2) = \frac {\sum_i \mathrm I (x_{[i][1]}^\ast \leq x_1 \wedge x_{[i][2]}^\ast \leq x_2)}{n_r}
-\end {equation*}
-
-Where $n_r$ is the number of observations.
-
-This can be generalized for more variables.
-
-However, there are some issues with this expression. So I'm considering alternatives.
 
 \end{document}
